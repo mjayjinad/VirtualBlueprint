@@ -1,0 +1,2 @@
+D:\Documents2\Unity\Projects\VirtualBlueprint\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp\CMakeLists.txt
+D:\Documents2\Unity\Projects\VirtualBlueprint\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp\GameActivity\CMakeLists.txt

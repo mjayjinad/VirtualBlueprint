@@ -1,0 +1,34 @@
+{
+    "name": "DeleteNote",
+    "maps": [
+        {
+            "name": "Delete",
+            "id": "6f2555a5-ab3f-4b36-8f57-6ef7fff2d2e2",
+            "actions": [
+                {
+                    "name": "DeleteAction",
+                    "type": "Button",
+                    "id": "3ba487a5-0410-4632-91df-86e8048ea61f",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "4a06dbba-c01c-4071-bd17-755db66f5774",
+                    "path": "<OculusTouchController>{RightHand}/secondaryButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "DeleteAction",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}

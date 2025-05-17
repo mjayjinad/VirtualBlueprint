@@ -1,0 +1,34 @@
+{
+    "name": "MenuAction",
+    "maps": [
+        {
+            "name": "MenuActionMap",
+            "id": "3f8a0823-4eb4-43aa-9e67-5fbab649b0c0",
+            "actions": [
+                {
+                    "name": "MenuAction",
+                    "type": "Button",
+                    "id": "0e17ef11-ad8f-4fb2-9136-1e27ebfa4a25",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "0f81f975-63f7-4b72-9cf2-d8df7cf77cdb",
+                    "path": "<OculusTouchController>{LeftHand}/start",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "MenuAction",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}

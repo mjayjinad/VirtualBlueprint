@@ -1,0 +1,34 @@
+{
+    "name": "CreateNote",
+    "maps": [
+        {
+            "name": "CreateNoteMap",
+            "id": "969c32bc-819b-4fee-a47b-8c92e147e81d",
+            "actions": [
+                {
+                    "name": "CreateNoteAction",
+                    "type": "Button",
+                    "id": "85491faf-4eb7-44d2-b125-a93fa0def90e",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "0b7701ba-1ded-4553-81ba-18e640928322",
+                    "path": "<OculusTouchController>{RightHand}/primaryButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "CreateNoteAction",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}
