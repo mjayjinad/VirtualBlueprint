@@ -10,52 +10,55 @@ using UnityEngine.UI;
 public class WebRTCManager : MonoBehaviour
 {
     [Header("Video Transmission")]
-    [SerializeField] private Camera cameraStream;
-    [SerializeField] private RawImage sourceImage;
-    [SerializeField] private RawImage receiveImage;
+    [SerializeField] private Camera cameraStream; // Camera to capture video stream from
+    [SerializeField] private RawImage sourceImage; // UI element showing local camera feed
+    [SerializeField] private RawImage receiveImage; // UI element showing received remote video
 
     [Header("Audio Transmission")]
-    [SerializeField] private AudioSource inputAudioSource;
-    [SerializeField] private AudioSource outputAudioSource;
+    [SerializeField] private AudioSource inputAudioSource; // Audio source for microphone input (local)
+    [SerializeField] private AudioSource outputAudioSource; // Audio source for remote audio playback
 
-    private bool startVideoAudioChannel = false;
-    private RTCPeerConnection peerConnection;
-    private AudioStreamTrack micAudioTrack;
-    private WebSocket webSocket;
-    private string clientId;
+    private bool startVideoAudioChannel = false; // Flag to start video and audio streaming
+    private RTCPeerConnection peerConnection; // WebRTC peer connection instance
+    private AudioStreamTrack micAudioTrack; // Track for microphone audio
+    private WebSocket webSocket; // WebSocket for signaling
+    private string clientId; // Unique client identifier
 
-    private bool hasReceivedOffer = false;
-    private SessionDescription receivedOfferSessionDescTemp;
+    private bool hasReceivedOffer = false; // Flag for receiving SDP offer
+    private SessionDescription receivedOfferSessionDescTemp; // Temporary storage for SDP offer
 
-    private bool hasReceivedAnswer = false;
-    private SessionDescription receivedAnswerSessionDescTemp;
-    private bool videoStreamStarted = false;
+    private bool hasReceivedAnswer = false; // Flag for receiving SDP answer
+    private SessionDescription receivedAnswerSessionDescTemp; // Temporary storage for SDP answer
+    private bool videoStreamStarted = false; // Flag to track if video stream has started
 
+    // Called when the script instance is loaded
     private async void Start()
     {
         InitializeMicStatus();
 
-        clientId = gameObject.name;
+        clientId = gameObject.name; // Use GameObject name as client ID
 
-        // Initialize WebSocket
-        //The websocket signalling server(wss://webrtc-bim-server.glitch.me) will be closed.
-        //If you need to test the application for recruitement purporses, contact me at abdulmaliq.jinad@gmail.com
+        // Initialize WebSocket for signaling
+        // NOTE: The default signaling server "wss://webrtc-bim-server.glitch.me" will be closed.
+        // For recruitment testing, contact abdulmaliq.jinad@gmail.com for access.
         webSocket = new WebSocket("wss://webrtc-bim-server.glitch.me/", new Dictionary<string, string>() {
             { "user-agent", "unity webrtc" }
         });
 
+        // Called when WebSocket connection opens
         webSocket.OnOpen += () => {
-            // STUN server config
+            // Configure STUN server for NAT traversal
             RTCConfiguration config = default;
             config.iceServers = new[] {
                 new RTCIceServer {
-                    urls = new[] {
-                        "stun:stun.l.google.com:19302"
-                    }
+                    urls = new[] { "stun:stun.l.google.com:19302" }
                 }
             };
 
+            // Create new WebRTC peer connection with config
             peerConnection = new RTCPeerConnection(ref config);
+
+            // Send ICE candidates over WebSocket when discovered
             peerConnection.OnIceCandidate = candidate => {
                 var candidateInit = new CandidateInit()
                 {
@@ -65,9 +68,12 @@ public class WebRTCManager : MonoBehaviour
                 };
                 webSocket.SendText("CANDIDATE!" + candidateInit.ConvertToJSON());
             };
+
+            // Monitor ICE connection state changes
             peerConnection.OnIceConnectionChange = state => {
                 Debug.Log(state);
 
+                // Handle peer disconnection or failure
                 if (state == RTCIceConnectionState.Disconnected ||
                     state == RTCIceConnectionState.Failed ||
                     state == RTCIceConnectionState.Closed)
@@ -76,14 +82,18 @@ public class WebRTCManager : MonoBehaviour
                 }
             };
 
+            // Handle incoming media tracks
             peerConnection.OnTrack = e => {
+                // Video track received
                 if (e.Track is VideoStreamTrack video)
                 {
-                    if(receiveImage != null)
+                    if (receiveImage != null)
                     {
+                        // Update UI texture on receiving video frames
                         video.OnVideoReceived += tex => {
                             receiveImage.texture = tex;
 
+                            // Set flag when video stream starts
                             if (!videoStreamStarted)
                             {
                                 videoStreamStarted = true;
@@ -91,22 +101,27 @@ public class WebRTCManager : MonoBehaviour
                         };
                     }
                 }
+
+                // Audio track received
                 if (e.Track is AudioStreamTrack audio)
                 {
+                    // Set remote audio source and play
                     outputAudioSource.SetTrack(audio);
                     outputAudioSource.loop = true;
                     outputAudioSource.Play();
                 }
             };
 
+            // Trigger offer creation when negotiation needed
             peerConnection.OnNegotiationNeeded = () => {
                 StartCoroutine(CreateOffer());
             };
 
+            // Start WebRTC update loop coroutine
             StartCoroutine(WebRTC.Update());
         };
 
-        // Receive WebSocket messages
+        // Handle incoming WebSocket messages (signaling)
         webSocket.OnMessage += (bytes) => {
             var data = Encoding.UTF8.GetString(bytes);
             var signalingMessage = new SignalingMessage(data);
@@ -118,11 +133,13 @@ public class WebRTCManager : MonoBehaviour
                     receivedOfferSessionDescTemp = SessionDescription.FromJSON(signalingMessage.Message);
                     hasReceivedOffer = true;
                     break;
+
                 case SignalingMessageType.ANSWER:
                     Debug.Log(clientId + " - Got ANSWER: " + signalingMessage.Message);
                     receivedAnswerSessionDescTemp = SessionDescription.FromJSON(signalingMessage.Message);
                     hasReceivedAnswer = true;
                     break;
+
                 case SignalingMessageType.CANDIDATE:
                     Debug.Log(clientId + " - Got CANDIDATE: " + signalingMessage.Message);
                     var candidateInit = CandidateInit.FromJSON(signalingMessage.Message);
@@ -133,46 +150,55 @@ public class WebRTCManager : MonoBehaviour
                     RTCIceCandidate candidate = new RTCIceCandidate(init);
                     peerConnection.AddIceCandidate(candidate);
                     break;
+
                 default:
                     Debug.Log(clientId + " - Received: " + data);
                     break;
             }
         };
 
+        // Connect WebSocket
         await webSocket.Connect();
     }
 
     private void Update()
     {
+        // If SDP offer received, start creating an answer
         if (hasReceivedOffer)
         {
             hasReceivedOffer = !hasReceivedOffer;
             StartCoroutine(CreateAnswer());
         }
+
+        // If SDP answer received, set remote description
         if (hasReceivedAnswer)
         {
             hasReceivedAnswer = !hasReceivedAnswer;
             StartCoroutine(SetRemoteDesc());
         }
 
+        // Trigger starting video and audio streaming when flag is set
         if (startVideoAudioChannel)
         {
             startVideoAudioChannel = !startVideoAudioChannel;
 
-            // Video
-            if(sourceImage != null)
+            // Start video streaming if UI element assigned
+            if (sourceImage != null)
             {
+                // Capture video stream track from camera with 1280x720 resolution
                 var videoStreamTrack = cameraStream.CaptureStreamTrack(1280, 720);
                 sourceImage.texture = cameraStream.targetTexture;
                 peerConnection.AddTrack(videoStreamTrack);
             }
 
+            // Start microphone streaming
             StartMicrophone();
             micAudioTrack = new AudioStreamTrack(inputAudioSource);
-            micAudioTrack.Loopback = true;
+            micAudioTrack.Loopback = true; // Enable mic audio loopback
             peerConnection.AddTrack(micAudioTrack);
         }
 
+        // Dispatch WebSocket message queue for platforms except WebGL editor
 #if !UNITY_WEBGL || UNITY_EDITOR
         webSocket.DispatchMessageQueue();
 #endif
@@ -190,6 +216,10 @@ public class WebRTCManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Coroutine to create SDP offer and send via signaling server
+    /// </summary>
+    /// <returns></returns>
     private IEnumerator CreateOffer()
     {
         var offer = peerConnection.CreateOffer();
@@ -207,6 +237,10 @@ public class WebRTCManager : MonoBehaviour
         webSocket.SendText("OFFER!" + offerSessionDesc.ConvertToJSON());
     }
 
+    /// <summary>
+    /// Coroutine to create SDP answer and send via signaling server
+    /// </summary>
+    /// <returns></returns>
     private IEnumerator CreateAnswer()
     {
         RTCSessionDescription offerSessionDesc = new RTCSessionDescription();
@@ -231,6 +265,10 @@ public class WebRTCManager : MonoBehaviour
         webSocket.SendText("ANSWER!" + answerSessionDesc.ConvertToJSON());
     }
 
+    /// <summary>
+    /// Coroutine to set remote session description (answer)
+    /// </summary>
+    /// <returns></returns>
     private IEnumerator SetRemoteDesc()
     {
         RTCSessionDescription answerSessionDesc = new RTCSessionDescription();
@@ -241,6 +279,9 @@ public class WebRTCManager : MonoBehaviour
         yield return remoteDescOp;
     }
 
+    /// <summary>
+    /// Start capturing microphone audio input
+    /// </summary>
     private void StartMicrophone()
     {
         string micDevice = Microphone.devices.Length > 0 ? Microphone.devices[0] : null;
@@ -249,7 +290,7 @@ public class WebRTCManager : MonoBehaviour
             inputAudioSource.clip = Microphone.Start(micDevice, true, 10, 48000);
             inputAudioSource.loop = true;
 
-            // Wait until microphone has started recording
+            // Wait until microphone starts recording
             while (!(Microphone.GetPosition(micDevice) > 0)) { }
 
             inputAudioSource.Play();
@@ -260,46 +301,57 @@ public class WebRTCManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Public method to trigger starting video and audio streaming
+    /// </summary>
     public void StartVideoAudio()
     {
         startVideoAudioChannel = true;
     }
 
+    /// <summary>
+    /// Initialize microphone mute state on start
+    /// </summary>
     private void InitializeMicStatus()
     {
         if (micAudioTrack != null)
         {
-            micAudioTrack.Loopback = false;  // Disable microphone audio loopback
+            micAudioTrack.Loopback = false;  // Disable microphone audio loopback initially
         }
 
-        inputAudioSource.volume = 0;  // Mute audio
-        Debug.Log("Microphone muted on start");
+        inputAudioSource.volume = 0;  // Mute audio initially
     }
 
+    /// <summary>
+    /// Mute or unmute the microphone based on toggle value
+    /// </summary>
+    /// <param name="toggleValue"></param>
     public void MuteMic(bool toggleValue)
     {
-        if (toggleValue)  // Toggle is On (Unmuted)
+        if (toggleValue)
         {
             if (micAudioTrack != null)
             {
-                micAudioTrack.Loopback = false;  // Disable microphone audio loopback
+                micAudioTrack.Loopback = false;  // Disable microphone audio loopback to mute
             }
 
-            inputAudioSource.volume = 0;  // Mute audio
-            Debug.Log("Microphone muted");
+            inputAudioSource.volume = 0;  // Mute local mic monitoring audio
         }
-        else  // Toggle is Off (Muted)
+        else 
         {
             if (micAudioTrack != null)
             {
-                micAudioTrack.Loopback = true;  // Enable microphone audio loopback
+                micAudioTrack.Loopback = true;  // Enable microphone audio loopback to unmute
             }
 
-            inputAudioSource.volume = 1;  // Restore audio volume
-            Debug.Log("Microphone unmuted");
+            inputAudioSource.volume = 1;  // Restore local mic monitoring audio
         }
     }
 
+    /// <summary>
+    /// Returns a status message depending on whether video stream started
+    /// </summary>
+    /// <returns></returns>
     public string OnVideoStreamStarted()
     {
         string text;
@@ -310,12 +362,14 @@ public class WebRTCManager : MonoBehaviour
         else
         {
             text = "The stream hasn’t started yet. Please try again once the user begins streaming";
-            Debug.Log("Not connected");
         }
 
         return text;
     }
 
+    /// <summary>
+    /// Called when remote peer disconnects or connection is lost
+    /// </summary>
     private void OnPeerDisconnected()
     {
         Debug.Log("Remote peer disconnected or connection lost.");

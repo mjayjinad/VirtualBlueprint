@@ -1,18 +1,30 @@
 using System;
 
-public class SignalingMessage {
+public class SignalingMessage
+{
+    public readonly SignalingMessageType Type; //The type of signaling message (Offer, Answer, Candidate, or Other).
 
-    public readonly SignalingMessageType Type;
-    public readonly string Message;
+    public readonly string Message; //The content/message payload of the signaling message.
 
-    public SignalingMessage(string messageString) {
+    /// <summary>
+    /// Constructor that parses the raw message string into type and content.
+    /// </summary>
+    /// <param name="messageString"></param>
+    public SignalingMessage(string messageString)
+    {
+        // Default type to OTHER, meaning unrecognized type
         Type = SignalingMessageType.OTHER;
         Message = messageString;
 
-        var messageArray = messageString.Split("!");
+        // Split string by '!' delimiter into [type, payload]
+        var messageArray = messageString.Split('!');
 
-        if ((messageArray.Length >= 2) && Enum.TryParse(messageArray[0], out SignalingMessageType resultType)) {
-            switch (resultType) {
+        // If split result is valid and first part parses to SignalingMessageType
+        if ((messageArray.Length >= 2) && Enum.TryParse(messageArray[0], out SignalingMessageType resultType))
+        {
+            // Only assign recognized types to Type and update message to payload
+            switch (resultType)
+            {
                 case SignalingMessageType.OFFER:
                 case SignalingMessageType.ANSWER:
                 case SignalingMessageType.CANDIDATE:

@@ -6,28 +6,32 @@ using UnityEngine.InputSystem;
 public class StickyNoteSpawner : MonoBehaviour
 {
     [Header("Sticky Note Prefab")]
-    [SerializeField] private GameObject stickyNotePrefab;
+    [SerializeField] private GameObject stickyNotePrefab; // Prefab to instantiate as sticky note
 
     [Header("Input Action Reference")]
-    [SerializeField] private InputActionReference spawnNoteAction;
+    [SerializeField] private InputActionReference spawnNoteAction; // Input action to trigger spawning
 
     [Header("Spawn Offset from Camera")]
-    [SerializeField] private Vector3 spawnOffset = new Vector3(0.3f, -0.2f, 0.7f); // Adjust as needed
+    [SerializeField] private Vector3 spawnOffset = new Vector3(0.3f, -0.2f, 0.7f); // Offset relative to camera position
 
     [Header("Rotation Offset (Euler angles)")]
-    [SerializeField] private Vector3 rotationOffsetEuler = Vector3.zero;  // Rotation offset in degrees
+    [SerializeField] private Vector3 rotationOffsetEuler = Vector3.zero; // Additional rotation offset in degrees
 
-    private Transform cameraTransform;
-    private Transform xrRigTransform;
+    private Transform cameraTransform; // Reference to main camera transform
+    private Transform xrRigTransform; // Reference to XR rig root transform
 
     private void Awake()
     {
+        // Cache main camera transform
         cameraTransform = Camera.main.transform;
+
+        // Find the XR Origin (rig) in the scene and cache its transform
         xrRigTransform = FindFirstObjectByType<XROrigin>().transform;
     }
 
     private void OnEnable()
     {
+        // Subscribe to the spawn note input action
         if (spawnNoteAction != null)
         {
             spawnNoteAction.action.performed += OnSpawnNote;
@@ -37,6 +41,7 @@ public class StickyNoteSpawner : MonoBehaviour
 
     private void OnDisable()
     {
+        // Unsubscribe from the input action to avoid memory leaks
         if (spawnNoteAction != null)
         {
             spawnNoteAction.action.performed -= OnSpawnNote;
@@ -44,6 +49,10 @@ public class StickyNoteSpawner : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Called when the spawn note input action is performed
+    /// </summary>
+    /// <param name="context"></param>
     private void OnSpawnNote(InputAction.CallbackContext context)
     {
         if (stickyNotePrefab == null)
@@ -58,31 +67,30 @@ public class StickyNoteSpawner : MonoBehaviour
             return;
         }
 
-        // Calculate spawn position relative to camera using the offset
+        // Calculate spawn position relative to the camera using specified offset
         Vector3 spawnPosition =
             cameraTransform.position +
             cameraTransform.right * spawnOffset.x +
             cameraTransform.forward * spawnOffset.z +
             Vector3.up * spawnOffset.y;
 
-        // Face sticky note towards the camera
+        // Calculate rotation so sticky note faces towards the camera
         Quaternion lookRotation = Quaternion.LookRotation(spawnPosition - cameraTransform.position);
 
-        // Apply rotation offset
+        // Create additional rotation offset from Euler angles
         Quaternion rotationOffset = Quaternion.Euler(rotationOffsetEuler);
 
+        // Combine base look rotation with rotation offset
         Quaternion finalRotation = lookRotation * rotationOffset;
 
-        // Instantiate sticky note at calculated position and rotation, parented to xrRigTransform
+        // Instantiate sticky note prefab at calculated position & rotation, parented to XR rig
         GameObject newNote = Instantiate(stickyNotePrefab, spawnPosition, finalRotation, xrRigTransform);
 
-        // Optional: Activate input field for immediate typing
+        // If sticky note contains a TMP_InputField, activate it immediately for user input
         TMP_InputField inputField = newNote.GetComponentInChildren<TMP_InputField>();
         if (inputField != null)
         {
             inputField.ActivateInputField();
         }
-
-        Debug.Log($"Sticky Note spawned at {spawnPosition} facing camera with rotation offset.");
     }
 }
