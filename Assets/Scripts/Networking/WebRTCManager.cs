@@ -38,6 +38,8 @@ public class WebRTCManager : MonoBehaviour
         clientId = gameObject.name;
 
         // Initialize WebSocket
+        //The websocket signalling server(wss://webrtc-bim-server.glitch.me) will be closed.
+        //If you need to test the application for recruitement purporses, contact me at abdulmaliq.jinad@gmail.com
         webSocket = new WebSocket("wss://webrtc-bim-server.glitch.me/", new Dictionary<string, string>() {
             { "user-agent", "unity webrtc" }
         });
