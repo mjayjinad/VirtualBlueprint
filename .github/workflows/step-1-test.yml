@@ -1,0 +1,139 @@
+name: 📋 Step 1 - Test
+
+on:
+  workflow_call:
+    inputs:
+      unityVersion:
+        description: "Unity version to use"
+        required: false
+        default: 'auto'
+        type: string
+      useGitLfs:
+        description: "Whether to use Git LFS (true/false)"
+        required: false
+        default: 'true'
+        type: string
+      editModePath:
+        description: "Path to the EditMode tests folder"
+        required: false
+        default: 'Assets/Tests/Editor'
+        type: string
+      playModePath:
+        description: "Path to the PlayMode tests folder"
+        required: false
+        default: 'Assets/Tests/PlayMode'
+        type: string
+      timeoutMinutes:
+        description: "Timeout for each test job in minutes"
+        required: false
+        default: 15
+        type: number
+      quietMode:
+        description: "Enable quiet mode to suppress uploads/logs unless tests fail"
+        required: false
+        default: 'false'
+        type: string
+    outputs:
+      hasFails:
+        description: "Whether any test failures occurred"
+        value: ${{ jobs.summarize_tests.outputs.hasFails }}
+      totalTests:
+        description: "Total number of tests run (combined EditMode + PlayMode)"
+        value: ${{ jobs.summarize_tests.outputs.totalTests }}
+      passedTests:
+        description: "Total number of passed tests (combined EditMode + PlayMode)"
+        value: ${{ jobs.summarize_tests.outputs.passedTests }}
+      failedTestNames:
+        description: "List of failed test names (multiline string or 'None' if no failures)"
+        value: ${{ jobs.summarize_tests.outputs.failedTestNames }}
+    secrets:
+      UNITY_EMAIL: { required: true }
+      UNITY_PASSWORD: { required: true }
+      UNITY_LICENSE: { required: true }
+
+jobs:
+  upload_unity_license:
+    name: 📥️ Upload Unity License
+    uses: ./.github/workflows/unity-license-uploader.yml
+    secrets:
+      inherit
+
+  detect_tests:
+    name: 🔍 Detect Tests
+    runs-on: ubuntu-latest
+    outputs:
+      has_editmode: ${{ steps.detect.outputs.has_editmode }}
+      has_playmode: ${{ steps.detect.outputs.has_playmode }}
+    steps:
+      - id: detect
+        uses: avalin/unity-ci-templates/.github/actions/detect-tests-existence@main
+        with:
+          editModePath: ${{ inputs.editModePath }}
+          playModePath: ${{ inputs.playModePath }}
+
+  run_editmode:
+    name: 🥪 EditMode Tests
+    needs: 
+      - detect_tests
+      - upload_unity_license
+    if: needs.detect_tests.outputs.has_editmode == 'true'
+    uses: ./.github/workflows/unity-tests-runner.yml
+    with:
+      testMode: EditMode
+      unityVersion: ${{ inputs.unityVersion }}
+      useGitLfs: ${{ inputs.useGitLfs }}
+      timeoutMinutes: ${{ inputs.timeoutMinutes }}
+      quietMode: ${{ inputs.quietMode }}
+    secrets: inherit
+
+  run_playmode:
+    name: 🎮 PlayMode Tests
+    needs: 
+      - detect_tests
+      - upload_unity_license
+    if: needs.detect_tests.outputs.has_playmode == 'true'
+    uses: ./.github/workflows/unity-tests-runner.yml
+    with:
+      testMode: PlayMode
+      unityVersion: ${{ inputs.unityVersion }}
+      useGitLfs: ${{ inputs.useGitLfs }}
+      timeoutMinutes: ${{ inputs.timeoutMinutes }}
+      quietMode: ${{ inputs.quietMode }}
+    secrets: inherit
+
+  summarize_tests:
+    name: 📄 Summarize Test Results
+    needs: 
+      - run_editmode
+      - run_playmode
+    if: |
+      always() &&
+      (
+        inputs.quietMode == 'false' ||
+        (needs.run_editmode.result == 'success' && needs.run_editmode.outputs.failed == 'true') ||
+        (needs.run_playmode.result == 'success' && needs.run_playmode.outputs.failed == 'true')
+      )
+    uses: ./.github/workflows/summarize-tests.yml
+    with:
+      quietMode: ${{ inputs.quietMode }}
+      editmodeFailed: ${{ needs.run_editmode.outputs.failed }}
+      playmodeFailed: ${{ needs.run_playmode.outputs.failed }}
+      editmodeTotal: ${{ needs.run_editmode.outputs.total }}
+      editmodePassed: ${{ needs.run_editmode.outputs.passed }}
+      editmodeResult: ${{ needs.run_editmode.outputs.result }}
+      editmodeDuration: ${{ needs.run_editmode.outputs.duration }}
+      playmodeTotal: ${{ needs.run_playmode.outputs.total }}
+      playmodePassed: ${{ needs.run_playmode.outputs.passed }}
+      playmodeResult: ${{ needs.run_playmode.outputs.result }}
+      playmodeDuration: ${{ needs.run_playmode.outputs.duration }}
+
+  test_failure_gatekeeper:
+    name: 🛑 Stop Pipeline on Failed Tests
+    needs: summarize_tests
+    runs-on: ubuntu-latest
+    if: ${{ needs.summarize_tests.outputs.hasFails == 'true' }}
+    steps:
+      - name: Force Fail Workflow
+        run: |
+          echo "Detected failed tests. Failing test workflow deliberately."
+          exit 1

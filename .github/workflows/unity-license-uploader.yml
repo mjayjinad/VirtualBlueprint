@@ -1,0 +1,40 @@
+name: 📥️ Upload Unity License
+
+on:
+  workflow_call:
+
+jobs:
+  activate-license:
+    name: Activate Unity License
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Activate Unity License
+        id: activate
+        uses: game-ci/unity-activate@v2
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+
+      - name: Upload Unity License File
+        run: |
+          echo "🔍 Searching for license file..."
+          FOUND=$(find $HOME -type f -name 'Unity_lic.ulf' | head -n 1)
+          if [ -z "$FOUND" ]; then
+            echo "❌ License file not found. Build aborted."
+            exit 1
+          else
+            echo "✅ Found at $FOUND"
+            mkdir -p license
+            cp "$FOUND" license/
+          fi
+
+      - name: Upload License Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-license
+          path: license/Unity_lic.ulf
+          retention-days: 3

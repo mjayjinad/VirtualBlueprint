@@ -1,0 +1,172 @@
+name: 📊 Unity Tests Runner
+
+on:
+  workflow_call:
+    inputs:
+      testMode:
+        description: "Unity test mode to run (EditMode or PlayMode)"
+        required: true
+        type: string
+      unityVersion:
+        description: "Unity version to use"
+        required: true
+        type: string
+      useGitLfs:
+        description: "Whether to use Git LFS (true/false)"
+        required: true
+        type: string
+      timeoutMinutes:
+        description: "Timeout for each build job in minutes"
+        type: number
+        required: true
+      quietMode:
+        description: "Enable quiet mode to suppress uploads/logs unless tests fail"
+        required: false
+        default: "false"
+        type: string
+    outputs:
+      total:
+        description: "Total number of tests"
+        value: ${{ jobs.run-tests.outputs.total }}
+      passed:
+        description: "Number of passed tests"
+        value: ${{ jobs.run-tests.outputs.passed }}
+      result:
+        description: "Overall result (Passed, Failed, etc.)"
+        value: ${{ jobs.run-tests.outputs.result }}
+      duration:
+        description: "Test duration in seconds"
+        value: ${{ jobs.run-tests.outputs.duration }}
+      failed:
+        description: "Whether the test job failed"
+        value: ${{ jobs.run-tests.outputs.failed }}
+
+jobs:
+  run-tests:
+    name: Run ${{ inputs.testMode }} Tests
+    runs-on: ubuntu-latest
+    outputs:
+      total: ${{ steps.summary.outputs.total }}
+      passed: ${{ steps.summary.outputs.passed }}
+      result: ${{ steps.summary.outputs.result }}
+      duration: ${{ steps.summary.outputs.duration }}
+      failed: ${{ steps.test-outcome.outputs.failed }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create LFS file list
+        if: inputs.useGitLfs == 'true'
+        run: |
+          git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id || true
+
+      - name: Restore LFS cache
+        if: inputs.useGitLfs == 'true'
+        uses: actions/cache@v4
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Git LFS Pull
+        if: inputs.useGitLfs == 'true'
+        run: git lfs pull
+
+      - name: Download Unity License Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: unity-license
+          path: ~/.local/share/unity3d/Unity
+
+      - name: Cache Unity Packages
+        uses: actions/cache@v4
+        with:
+          path: Packages
+          key: Packages-${{ inputs.testMode }}-${{ hashFiles('Packages/**', 'Packages/manifest.json') }}
+          restore-keys: |
+            Packages-${{ inputs.testMode }}-
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ inputs.testMode }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ inputs.testMode }}-
+
+      - name: Print Unity Version & Selected Test Mode
+        shell: bash
+        run: |
+          echo "🛠 Unity Version:   ${{ inputs.unityVersion }}"
+          echo "🧪 Test Mode:       ${{ inputs.testMode }}"
+          echo "🔕 Quiet Mode:      ${{ inputs.quietMode }}"
+
+      - name: Run ${{ inputs.testMode }} Tests
+        id: run-tests
+        timeout-minutes: ${{ inputs.timeoutMinutes }}
+        continue-on-error: true
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          testMode: ${{ inputs.testMode }}
+          unityVersion: ${{ inputs.unityVersion }} 
+
+      - name: Determine Test Outcome
+        id: test-outcome
+        run: echo "failed=${{ steps.run-tests.outcome != 'success' }}" >> $GITHUB_OUTPUT
+
+      - name: Upload ${{ inputs.testMode }} Test Results
+        if: steps.test-outcome.outputs.failed == 'true' || inputs.quietMode != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity-${{ inputs.testMode }}-${{ github.sha }}
+          path: ${{ steps.run-tests.outputs.artifactsPath }}
+          retention-days: 7
+
+      - name: Log Result Path
+        if: inputs.quietMode == 'false' || steps.test-outcome.outputs.failed == 'true'
+        run: |
+          if [ -z "${{ steps.run-tests.outputs.artifactsPath }}" ]; then
+            echo "⚠️ No test results found. Maybe test step was skipped or failed early."
+          else
+            echo "✅ Test results located at: ${{ steps.run-tests.outputs.artifactsPath }}"
+          fi
+
+      - name: Extract Test Summary
+        if: inputs.quietMode == 'false' || steps.test-outcome.outputs.failed == 'true'
+        id: summary
+        run: |
+          XML=$(find "${{ steps.run-tests.outputs.artifactsPath }}" -name '*.xml' | head -n 1)
+
+          if [[ -f "$XML" ]]; then
+            TOTAL=$(grep -oP 'total="\K[0-9]+' "$XML" | head -n1)
+            PASSED=$(grep -oP 'passed="\K[0-9]+' "$XML" | head -n1)
+            RESULT=$(grep -oP 'result="\K[^"]+' "$XML" | head -n1)
+            RAW_DURATION=$(grep -oP 'duration="\K[0-9.]+' "$XML" | head -n1)
+
+            DURATION_FORMATTED=$(awk "BEGIN {
+              total = $RAW_DURATION;
+              min = int(total / 60);
+              sec = total % 60;
+              if (min > 0) {
+                printf \"%dm %.2fs\", min, sec;
+              } else {
+                printf \"%.2fs\", sec;
+              }
+            }")
+
+            echo "total=$TOTAL" >> $GITHUB_OUTPUT
+            echo "passed=$PASSED" >> $GITHUB_OUTPUT
+            echo "result=$RESULT" >> $GITHUB_OUTPUT
+            echo "duration=$DURATION_FORMATTED" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No test report XML found. Possibly skipped or failed before reporting stage."
+            echo "total=0" >> $GITHUB_OUTPUT
+            echo "passed=0" >> $GITHUB_OUTPUT
+            echo "result=Skipped" >> $GITHUB_OUTPUT
+            echo "duration=0s" >> $GITHUB_OUTPUT
+          fi
