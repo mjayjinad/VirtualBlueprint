@@ -100,6 +100,16 @@ jobs:
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
 
+  # Clean up Docker before starting the build process
+  cleanup_docker:
+    name: Clean Up Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clean up Docker
+        run: |
+          echo "Cleaning up Docker to reclaim disk space before the build process..."
+          docker system prune -f
+
   # ─────────────────────────────────────────────────────────────────────────────
   # 2. Build
   # ─────────────────────────────────────────────────────────────────────────────
