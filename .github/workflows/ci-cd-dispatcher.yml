@@ -149,6 +149,12 @@ jobs:
           sparse-checkout-cone-mode: false
           fetch-depth: 1
 
+      - name: 🐛 Debug deployTargets
+        run: |
+          echo "🔍 Raw input: ${{ inputs.deployTargets }}"
+          echo "🔍 Metadata deployTargets output: ${{ needs.prepare_metadata.outputs.deployTargets }}"
+          echo "🔍 ValidDeployTargets used: ${{ needs.prepare_metadata.outputs.validDeployTargets }}"
+
       - name: Install GitHub CLI
         run: sudo apt-get install gh -y
 
